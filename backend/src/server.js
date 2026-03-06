@@ -59,6 +59,12 @@ const initDB = async () => {
 };
 
 app.listen(PORT, async () => {
-    console.log(`Server running on port ${PORT}`);
-    await initDB();
+    console.log(`Server will run on port ${PORT} after DB init`);
 });
+
+const startServer = async () => {
+    await initDB();
+    console.log(`Server fully initialized and running on port ${PORT}`);
+};
+
+startServer();
