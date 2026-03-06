@@ -1,0 +1,88 @@
+import puppeteer from 'puppeteer';
+
+export const fetchElcenDailyAverages = async (browser, dateStr, centralaSearch, instalatieSearch = null) => {
+    // Expected dateStr Format: YYYY-MM-DD
+    let page = null;
+    try {
+        page = await browser.newPage();
+
+        // Elcen format requires YYYY-MM-DD
+        const url = `https://www.elcen.ro/emisii/?date=${dateStr}`;
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+
+        // CRITICAL FIX: The table HTML is present instantly, but the data is fetched via AJAX.
+        // We must wait for at least one table cell (td) to be injected into the DOM.
+        // If it throws a timeout, it means either the site is down or there genuinely is no data for that day.
+        try {
+            await page.waitForSelector('#table tr td', { timeout: 10000 });
+        } catch (timeoutErr) {
+            // No data loaded for this date within 10s. Safe to assume empty.
+            return null;
+        }
+
+        const data = await page.evaluate(() => {
+            const rows = document.querySelectorAll('#table tr');
+            return Array.from(rows).map(row => {
+                const cells = row.querySelectorAll('td');
+                return Array.from(cells).map(cell => cell.innerText.trim().replace(/\n/g, ' '));
+            });
+        });
+
+        // Expected Columns from website: 
+        // 0: Centrala, 1: Instalatie, 
+        // 2: NOx raportat, 3: NOx Max, 
+        // 4: SO2 raportat, 5: SO2 Max, 
+        // 6: Pulberi raportat, 7: Pulberi Max, 
+        // 8: CO raportat, 9: CO max
+
+        // Find matching row
+        let match = null;
+        for (const row of data) {
+            if (row.length < 10) continue;
+
+            // Centrala matching - handle instances like "CTE Bucuresti Vest" vs "CTE VEST"
+            // We take the last word of the search string (e.g., 'vest', 'sud', 'progresu', 'grozavesti')
+            const searchParts = centralaSearch.trim().split(' ');
+            const primaryKeyWord = searchParts[searchParts.length - 1].toLowerCase();
+            const isCentralaMatch = row[0].toLowerCase().includes(primaryKeyWord);
+
+            if (!isCentralaMatch) continue;
+
+            // If we have an aggregate search criteria, try to match it too.
+            // (Often the site might name them differently, e.g. "IA 1 (C. nr. 2, 3, 4) - P")
+            // We use a loose include
+            if (instalatieSearch) {
+                const searchLower = instalatieSearch.toLowerCase().replace(/\s+/g, '');
+                const siteInstalatieUpper = row[1].toLowerCase().replace(/\s+/g, '');
+
+                if (siteInstalatieUpper.includes(searchLower) || searchLower.includes(siteInstalatieUpper)) {
+                    match = row;
+                    break;
+                }
+            } else {
+                match = row;
+                break;
+            }
+        }
+
+        if (match) {
+            return {
+                rawSiteData: match,
+                mapped: {
+                    'Nox': parseFloat(match[2]),
+                    'SO2': parseFloat(match[4]),
+                    'Pulberi': parseFloat(match[6]),
+                    'CO': parseFloat(match[8])
+                }
+            };
+        }
+
+        return null;
+
+    } catch (err) {
+        console.error(`[Scraper] Error fetching Elcen data for ${dateStr}:`, err.message);
+        return null;
+    } finally {
+        if (page) await page.close(); // Only close the page, keep the browser alive
+    }
+};

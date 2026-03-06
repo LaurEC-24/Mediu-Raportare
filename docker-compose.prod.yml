@@ -1,0 +1,50 @@
+version: '3.8'
+
+services:
+  frontend:
+    image: ghcr.io/laurec-24/mediu-raportare-frontend:latest
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    networks:
+      - mediu-network
+
+  backend:
+    image: ghcr.io/laurec-24/mediu-raportare-backend:latest
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      - DB_HOST=postgres-db
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASS=${DB_PASS:-postgrespassword}
+      - DB_NAME=${DB_NAME:-mediu_raportare_db}
+      - JWT_SECRET=${JWT_SECRET:-supersecretmediu123}
+      - PORT=5000
+    depends_on:
+      - postgres-db
+    networks:
+      - mediu-network
+
+  postgres-db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=${DB_USER:-postgres}
+      - POSTGRES_PASSWORD=${DB_PASS:-postgrespassword}
+      - POSTGRES_DB=${DB_NAME:-mediu_raportare_db}
+    ports:
+      - "5434:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - mediu-network
+
+volumes:
+  postgres_data:
+
+networks:
+  mediu-network:
+    driver: bridge
