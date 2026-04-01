@@ -43,5 +43,19 @@ Nucleul funcțional al aplicației.
 ### Deployment & Mediu
 Tot sistemul stă deasupra asistentului **Docker** folosind infrastructură multi-container (front, back). Rularea presupune simplu orchestratorul `docker-compose up --build`. Datele de bază din SQLite rezistă grație mapărilor volumelor docker, la fel și pachetele build-uite, izolând practic sistemul și interdependențele node_modules de PC-ul client fizic.
 
+#### Deployment Portainer (Producție)
+Aplicația se instalează din Portainer prin "Add stack", folosind fișierul `docker-compose.prod.yml`.
+Pentru o funcționare corectă, definiți direct în codul YAML al stack-ului din Portainer credențiale puternice pentru:
+- `DB_USER` și `POSTGRES_USER`
+- `DB_PASS` și `POSTGRES_PASSWORD`
+
+Pentru un refresh curat al bazei de date (ștergerea vechilor informații blocate de volume), adăugați varianta finală a numelui volumului la finalul fișierului: `postgres_data_v2`.
+
+#### Gestiunea conturilor noi (Parole)
+Nu există interfață grafică de înregistrare. Pentru adăugarea de noi operatori direct în baza de date via DBeaver, parola trebuie criptată `bcrypt`. 
+Dintr-un terminal local executați:
+`node -e "const bcrypt = require('bcryptjs'); bcrypt.hash('parola_noua', 10).then(console.log);"`
+Introduceți rezultatul Hashului în coloana `password` a noului utilizator.
+
 ---
-*(Fișierul README este actualizat recurent adăugării modulelor și capabilităților noi analitice ale aplicației)*
+*(Fișierul doc este actualizat recurent adăugării modulelor și capabilităților noi analitice ale aplicației)*

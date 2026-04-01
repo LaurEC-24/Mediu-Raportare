@@ -43,6 +43,18 @@ const initDB = async () => {
             console.log('Seeded initial "Admin General" user.');
         }
 
+        // Seed Laura User
+        const lauraExists = await User.findOne({ where: { username: 'laura.stroe' } });
+        if (!lauraExists) {
+            const hashedLauraPassword = await bcrypt.hash('3PisiciRele', 10);
+            await User.create({
+                username: 'laura.stroe',
+                password: hashedLauraPassword,
+                role: 'user'
+            });
+            console.log('Seeded "laura.stroe" user.');
+        }
+
         // Seed Default Plants
         const defaultPlants = ['CTE SUD', 'CTE GROZAVESTI', 'CTE PROGRESU', 'CTE VEST'];
         for (const plantName of defaultPlants) {
