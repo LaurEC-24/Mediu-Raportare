@@ -17,4 +17,17 @@ api.interceptors.request.use(
     }
 );
 
+api.interceptors.response.use(
+    (response) => {
+        return response;
+    },
+    (error) => {
+        if (error.response && error.response.status === 401) {
+            // Emite un event global interceptat in AuthContext pentru delogare automata
+            window.dispatchEvent(new Event('auth-unauthorized'));
+        }
+        return Promise.reject(error);
+    }
+);
+
 export default api;

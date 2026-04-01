@@ -9,6 +9,7 @@ export default function Dashboard() {
     const [results, setResults] = useState(null);
     const [error, setError] = useState('');
     const [loading, setLoading] = useState(false);
+    const [isDragging, setIsDragging] = useState(false);
 
     // Fetch plants/aggregates for the manual override dropdowns
     useEffect(() => {
@@ -24,41 +25,62 @@ export default function Dashboard() {
         }
     };
 
-    const handleFileChange = (e) => {
-        if (e.target.files && e.target.files[0]) {
-            const selectedFile = e.target.files[0];
-            setFile(selectedFile);
-            setResults(null);
-            setError('');
+    const processSelectedFile = (selectedFile) => {
+        setFile(selectedFile);
+        setResults(null);
+        setError('');
 
-            // Auto-detection logic (Frontend side)
-            if (plants.length > 0) {
-                let detPlant = plants[0];
+        // Auto-detection logic (Frontend side)
+        if (plants.length > 0) {
+            let detPlant = plants[0];
 
-                for (const p of plants) {
-                    const shortName = p.name.replace('CTE ', '').toLowerCase();
-                    if (selectedFile.name.toLowerCase().includes(shortName) ||
-                        selectedFile.name.toLowerCase().includes(p.name.toLowerCase())) {
-                        detPlant = p;
+            for (const p of plants) {
+                const shortName = p.name.replace('CTE ', '').toLowerCase();
+                if (selectedFile.name.toLowerCase().includes(shortName) ||
+                    selectedFile.name.toLowerCase().includes(p.name.toLowerCase())) {
+                    detPlant = p;
+                    break;
+                }
+            }
+
+            setSelectedPlant(detPlant.id);
+
+            if (detPlant.aggregates && detPlant.aggregates.length > 0) {
+                let detAgg = detPlant.aggregates[0];
+                for (const agg of detPlant.aggregates) {
+                    if (selectedFile.name.toLowerCase().includes(agg.name.toLowerCase())) {
+                        detAgg = agg;
                         break;
                     }
                 }
-
-                setSelectedPlant(detPlant.id);
-
-                if (detPlant.aggregates && detPlant.aggregates.length > 0) {
-                    let detAgg = detPlant.aggregates[0];
-                    for (const agg of detPlant.aggregates) {
-                        if (selectedFile.name.toLowerCase().includes(agg.name.toLowerCase())) {
-                            detAgg = agg;
-                            break;
-                        }
-                    }
-                    setSelectedAggregate(detAgg.id);
-                } else {
-                    setSelectedAggregate('');
-                }
+                setSelectedAggregate(detAgg.id);
+            } else {
+                setSelectedAggregate('');
             }
+        }
+    };
+
+    const handleFileChange = (e) => {
+        if (e.target.files && e.target.files[0]) {
+            processSelectedFile(e.target.files[0]);
+        }
+    };
+
+    const handleDragOver = (e) => {
+        e.preventDefault();
+        setIsDragging(true);
+    };
+
+    const handleDragLeave = (e) => {
+        e.preventDefault();
+        setIsDragging(false);
+    };
+
+    const handleDrop = (e) => {
+        e.preventDefault();
+        setIsDragging(false);
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+            processSelectedFile(e.dataTransfer.files[0]);
         }
     };
 
@@ -91,6 +113,53 @@ export default function Dashboard() {
             setResults(response.data);
         } catch (err) {
             setError(err.response?.data?.message || 'A apărut o eroare la procesarea fișierului.');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleExportXlsx = async () => {
+        if (!file) {
+            setError('Vă rugăm să selectați un fișier mai întâi.');
+            return;
+        }
+
+        setLoading(true);
+        setError('');
+
+        const formData = new FormData();
+        formData.append('excelFile', file);
+
+        try {
+            const response = await api.post('/reports/export', formData, {
+                headers: {
+                    'Content-Type': 'multipart/form-data',
+                },
+                responseType: 'blob' // Important pentru download fisier binar
+            });
+
+            // Generare link temporar pentru declansarea descarcarii din browser
+            const url = window.URL.createObjectURL(new Blob([response.data]));
+            const link = document.createElement('a');
+            link.href = url;
+            
+            // Formatam un nume corect
+            let exportName = file.name;
+            if (exportName.toLowerCase().endsWith('.xlsm')) {
+                exportName = exportName.substring(0, exportName.length - 5) + '.xlsx';
+            } else if (!exportName.toLowerCase().endsWith('.xlsx')) {
+                exportName += '.xlsx';
+            }
+            
+            exportName = exportName.replace('.xlsx', '_Curatat.xlsx');
+            
+            link.setAttribute('download', exportName);
+            document.body.appendChild(link);
+            link.click();
+            link.parentNode.removeChild(link);
+
+        } catch (err) {
+            setError('A apărut o eroare la exportarea și curățarea fișierului.');
         } finally {
             setLoading(false);
         }
@@ -167,7 +236,14 @@ export default function Dashboard() {
                         <label className="block text-sm font-medium text-gray-700">
                             Upload document (.xlsx, .xls, .xlsm)
                         </label>
-                        <div className="mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-gray-300 border-dashed rounded-md bg-gray-50 hover:bg-gray-100 transition-colors">
+                        <div 
+                            className={`mt-1 flex justify-center px-6 pt-5 pb-6 border-2 border-dashed rounded-md transition-colors ${
+                                isDragging ? 'border-blue-500 bg-blue-50' : 'border-gray-300 bg-gray-50 hover:bg-gray-100'
+                            }`}
+                            onDragOver={handleDragOver}
+                            onDragLeave={handleDragLeave}
+                            onDrop={handleDrop}
+                        >
                             <div className="space-y-1 text-center">
                                 <svg className="mx-auto h-12 w-12 text-gray-400" stroke="currentColor" fill="none" viewBox="0 0 48 48" aria-hidden="true">
                                     <path d="M28 8H12a4 4 0 00-4 4v20m32-12v8m0 0v8a4 4 0 01-4 4H12a4 4 0 01-4-4v-4m32-4l-3.172-3.172a4 4 0 00-5.656 0L28 28M8 32l9.172-9.172a4 4 0 015.656 0L28 28m0 0l4 4m4-24h8m-4-4v8m-12 4h.02" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
@@ -260,6 +336,18 @@ export default function Dashboard() {
                             className="flex-1 flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
                         >
                             {loading ? 'Se procesează...' : '🌐 Execută Verificarea Site ELCEN'}
+                        </button>
+                    </div>
+
+                    {/* Export Clean XLSX */}
+                    <div className="flex flex-col sm:flex-row gap-4 mt-2">
+                        <button
+                            onClick={handleExportXlsx}
+                            disabled={loading || !file}
+                            className="flex-1 flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-blue-800 bg-blue-100 hover:bg-blue-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                            title="Descarca macheta actuala ca un fisier .xlsx normal, fara macro-uri sau butoane de comanda."
+                        >
+                            ⬇️ Descarcă Raport Curățat (.xlsx)
                         </button>
                     </div>
                 </div>

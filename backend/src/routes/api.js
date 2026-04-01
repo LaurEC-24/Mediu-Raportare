@@ -10,6 +10,7 @@ import {
     deletePlant
 } from '../controllers/limitsController.js';
 import { uploadReport } from '../controllers/reportController.js';
+import { exportToXlsx } from '../controllers/exportController.js';
 import { saveReportToHistory, getHistoricalReports, deleteHistoricalReport } from '../controllers/historyController.js';
 
 const router = express.Router();
@@ -31,6 +32,7 @@ router.delete('/plants/:plantId', deletePlant);
 
 // Reports
 router.post('/reports/verify', upload.single('excelFile'), uploadReport);
+router.post('/reports/export', upload.single('excelFile'), exportToXlsx);
 
 // History
 router.post('/reports/history', saveReportToHistory);
