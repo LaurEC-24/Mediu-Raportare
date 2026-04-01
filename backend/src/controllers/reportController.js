@@ -183,42 +183,49 @@ export const uploadReport = async (req, res) => {
                     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
                 });
 
-                // Process sequentially to not overload Elcen servers or memory (can take some time)
-                for (const targetDate of daysToVerify) {
-                    try {
-                        // Ensure date is purely YYYY-MM-DD
-                        const cleanDate = targetDate.substring(0, 10);
-                        if (cleanDate.length === 10) {
-                            const siteData = await fetchElcenDailyAverages(browser, cleanDate, plantName, aggregate.name);
+                // Process in chunks of 5 to speed up from 75s to ~15s and avoid Nginx 60s proxy_read_timeout
+                const chunkSize = 5;
+                let hasFatalError = false;
 
-                            if (siteData && siteData.mapped) {
-                                const excelDataForDay = dailyAveragesFromExcel[targetDate];
+                for (let i = 0; i < daysToVerify.length; i += chunkSize) {
+                    if (hasFatalError) break; // Daca a picat un chunk fatal, ne oprim.
+                    
+                    const chunk = daysToVerify.slice(i, i + chunkSize);
+                    
+                    await Promise.all(chunk.map(async (targetDate) => {
+                        if (hasFatalError) return;
+                        try {
+                            const cleanDate = targetDate.substring(0, 10);
+                            if (cleanDate.length === 10) {
+                                const siteData = await fetchElcenDailyAverages(browser, cleanDate, plantName, aggregate.name);
 
-                                // Compare each mapped noxa
-                                for (const [noxa, siteValue] of Object.entries(siteData.mapped)) {
-                                    // Only compare if we have it in our limits and excel
-                                    if (excelDataForDay[noxa] !== undefined && !isNaN(siteValue)) {
-                                        const excelValue = excelDataForDay[noxa];
+                                if (siteData && siteData.mapped) {
+                                    const excelDataForDay = dailyAveragesFromExcel[targetDate];
 
-                                        // User specifically noted 0.75 vs 0.74 (0.01 difference needs reporting)
-                                        // So we tighten the tolerance to 0.009
-                                        if (Math.abs(excelValue - siteValue) > 0.009) {
-                                            siteMismatches.push(`Nepotrivire Date Publice ELCEN pe data de **${cleanDate}** ➡️ ${noxa}: În Excel este **${excelValue}**, iar publicat pe site este **${siteValue}**`);
+                                    // Compare each mapped noxa
+                                    for (const [noxa, siteValue] of Object.entries(siteData.mapped)) {
+                                        if (excelDataForDay[noxa] !== undefined && !isNaN(siteValue)) {
+                                            const excelValue = excelDataForDay[noxa];
+                                            if (Math.abs(excelValue - siteValue) > 0.009) {
+                                                siteMismatches.push(`Nepotrivire Date Publice ELCEN pe data de **${cleanDate}** ➡️ ${noxa}: În Excel este **${excelValue}**, iar publicat pe site este **${siteValue}**`);
+                                            }
                                         }
                                     }
+                                } else {
+                                    siteMismatches.push(`AVERTISMENT: Nu am putut găsi/valida date publice pe site-ul ELCEN pentru centrala ${plantName} (Agregatul: **${aggregate.name}**) pe data de **${cleanDate}**.`);
                                 }
-                            } else {
-                                siteMismatches.push(`AVERTISMENT: Nu am putut găsi/valida date publice pe site-ul ELCEN pentru centrala ${plantName} (Agregatul: **${aggregate.name}**) pe data de **${cleanDate}**.`);
+                            }
+                        } catch (scrapeErr) {
+                            console.error(`[Scraper Loop] Eroare la procesarea datei ${targetDate}:`, scrapeErr.message);
+                            if (scrapeErr.message && scrapeErr.message.includes('CONNECTION_ERROR')) {
+                                console.error('[Scraper Loop] Conexiunea a picat / Site blocat. Oprim verificarea automat! (Timeout)');
+                                if (!hasFatalError) {
+                                    siteMismatches.push(`\nAvertisment critic: Conexiunea către elcen.ro a eșuat sau a expirat în rețeaua de producție.\nVerificarea a fost oprită pentru a preveni picarea temporară (timeout) a aplicației.`);
+                                    hasFatalError = true;
+                                }
                             }
                         }
-                    } catch (scrapeErr) {
-                        console.error(`[Scraper Loop] Eroare la procesarea datei ${targetDate}:`, scrapeErr.message);
-                        if (scrapeErr.message && scrapeErr.message.includes('CONNECTION_ERROR')) {
-                            console.error('[Scraper Loop] Conexiunea a picat / Site blocat. Oprim verificarea automat! (Timeout)');
-                            siteMismatches.push(`\nAvertisment critic: Conexiunea către elcen.ro a eșuat sau a expirat în rețeaua de producție.\nAcest lucru se întâmplă frecvent din cauza unui Firewall care blochează traficul de internet la ieșire pentru containerele Docker.\nVerificarea a fost oprită de urgență pentru a preveni picarea temporară (timeout) a aplicației.`);
-                            break; // Se opreste total bucla de verificari de pe elcen
-                        }
-                    }
+                    }));
                 }
             } catch (initErr) {
                 console.error("[Puppeteer] Initialization Error:", initErr.message);
