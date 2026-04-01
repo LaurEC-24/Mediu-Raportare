@@ -8,7 +8,10 @@ export const fetchElcenDailyAverages = async (browser, dateStr, centralaSearch, 
 
         // Elcen format requires YYYY-MM-DD
         const url = `https://www.elcen.ro/emisii/?date=${dateStr}`;
-        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        console.log(`[Scraper] Navighez către site-ul ELCEN: ${url} ...`);
+        
+        // Timeout redus de la 30s la 15s. Util in retele Enterprise care blocheaza internetul prin Firewall (Portainer)
+        await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 15000 });
 
         // CRITICAL FIX: The table HTML is present instantly, but the data is fetched via AJAX.
         // We must wait for at least one table cell (td) to be injected into the DOM.
@@ -17,6 +20,7 @@ export const fetchElcenDailyAverages = async (browser, dateStr, centralaSearch, 
             await page.waitForSelector('#table tr td', { timeout: 10000 });
         } catch (timeoutErr) {
             // No data loaded for this date within 10s. Safe to assume empty.
+            console.log(`[Scraper] Tabelul nu are coloane/date complete sau elcen.ro este gol pentru: ${dateStr}`);
             return null;
         }
 
@@ -80,7 +84,13 @@ export const fetchElcenDailyAverages = async (browser, dateStr, centralaSearch, 
         return null;
 
     } catch (err) {
-        console.error(`[Scraper] Error fetching Elcen data for ${dateStr}:`, err.message);
+        console.error(`[Scraper] Exception Error fetching Elcen data for ${dateStr}:`, err.message);
+        
+        // Daca firewall-ul a blocat, ori DNS-ul pica etc
+        if (err.message.includes('timeout') || err.message.includes('Timeout') || err.message.includes('ERR_') || err.message.includes('Network')) {
+            throw new Error(`CONNECTION_ERROR: ${err.message}`);
+        }
+        
         return null;
     } finally {
         if (page) await page.close(); // Only close the page, keep the browser alive

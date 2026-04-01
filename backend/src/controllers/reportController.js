@@ -178,7 +178,8 @@ export const uploadReport = async (req, res) => {
             try {
                 // Initialize a single shared browser context for all consecutive days
                 browser = await puppeteer.launch({
-                    headless: 'new',
+                    headless: true, // Folosim 'true' în mod modern conform update-urilor Puppeteer
+                    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || puppeteer.executablePath(),
                     args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
                 });
 
@@ -211,14 +212,25 @@ export const uploadReport = async (req, res) => {
                             }
                         }
                     } catch (scrapeErr) {
-                        console.error(`Scrape error for ${targetDate}`, scrapeErr);
+                        console.error(`[Scraper Loop] Eroare la procesarea datei ${targetDate}:`, scrapeErr.message);
+                        if (scrapeErr.message && scrapeErr.message.includes('CONNECTION_ERROR')) {
+                            console.error('[Scraper Loop] Conexiunea a picat / Site blocat. Oprim verificarea automat! (Timeout)');
+                            siteMismatches.push(`\nAvertisment critic: Conexiunea către elcen.ro a eșuat sau a expirat în rețeaua de producție.\nAcest lucru se întâmplă frecvent din cauza unui Firewall care blochează traficul de internet la ieșire pentru containerele Docker.\nVerificarea a fost oprită de urgență pentru a preveni picarea temporară (timeout) a aplicației.`);
+                            break; // Se opreste total bucla de verificari de pe elcen
+                        }
                     }
                 }
             } catch (initErr) {
-                console.error("Puppeteer Initialization Error:", initErr.message);
-                siteMismatches.push(`AVERTISMENT: Verificarea automată a site-ului a eșuat la inițializare.`);
+                console.error("[Puppeteer] Initialization Error:", initErr.message);
+                siteMismatches.push(`AVERTISMENT: Verificarea automată a site-ului a eșuat la inițializare: ${initErr.message}`);
             } finally {
-                if (browser) await browser.close();
+                if (browser) {
+                    try {
+                        await browser.close();
+                    } catch (closeErr) {
+                        console.error('[Puppeteer] Eroare neașteptată la închiderea browser-ului:', closeErr.message);
+                    }
+                }
             }
         }
 
