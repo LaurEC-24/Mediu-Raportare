@@ -39,6 +39,11 @@ export const fetchElcenDailyAverages = async (browser, dateStr, centralaSearch, 
         // 6: Pulberi raportat, 7: Pulberi Max, 
         // 8: CO raportat, 9: CO max
 
+        // Helper pentru eliminarea diacriticelor și ignorarea literelor mari (ă -> a, ș -> s)
+        const normalizeRoText = (str) => {
+            return str ? str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase() : "";
+        };
+
         // Find matching row
         let match = null;
         for (const row of data) {
@@ -47,8 +52,10 @@ export const fetchElcenDailyAverages = async (browser, dateStr, centralaSearch, 
             // Centrala matching - handle instances like "CTE Bucuresti Vest" vs "CTE VEST"
             // We take the last word of the search string (e.g., 'vest', 'sud', 'progresu', 'grozavesti')
             const searchParts = centralaSearch.trim().split(' ');
-            const primaryKeyWord = searchParts[searchParts.length - 1].toLowerCase();
-            const isCentralaMatch = row[0].toLowerCase().includes(primaryKeyWord);
+            const primaryKeyWord = normalizeRoText(searchParts[searchParts.length - 1]);
+            
+            const rowCentralaNormalized = normalizeRoText(row[0]);
+            const isCentralaMatch = rowCentralaNormalized.includes(primaryKeyWord);
 
             if (!isCentralaMatch) continue;
 
@@ -56,8 +63,8 @@ export const fetchElcenDailyAverages = async (browser, dateStr, centralaSearch, 
             // (Often the site might name them differently, e.g. "IA 1 (C. nr. 2, 3, 4) - P")
             // We use a loose include
             if (instalatieSearch) {
-                const searchLower = instalatieSearch.toLowerCase().replace(/\s+/g, '');
-                const siteInstalatieUpper = row[1].toLowerCase().replace(/\s+/g, '');
+                const searchLower = normalizeRoText(instalatieSearch).replace(/\s+/g, '');
+                const siteInstalatieUpper = normalizeRoText(row[1]).replace(/\s+/g, '');
 
                 if (siteInstalatieUpper.includes(searchLower) || searchLower.includes(siteInstalatieUpper)) {
                     match = row;

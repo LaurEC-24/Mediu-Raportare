@@ -31,7 +31,7 @@ const Aggregate = sequelize.define('Aggregate', {
             "O2": 21.0,
             "Umiditate mas": 100.0,
             "Temperatura": 200.0,
-            "Presiune": 1000.0
+            "Presiune": 1500.0
         }
     }
 });
